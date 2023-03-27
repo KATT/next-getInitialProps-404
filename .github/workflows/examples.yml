@@ -1,8 +1,5 @@
 name: Examples E2E
 
-on:
-  pull_request:
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

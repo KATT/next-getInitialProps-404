@@ -1,0 +1,71 @@
+name: Examples E2E
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    continue-on-error: true
+    strategy:
+      matrix:
+        node-start: ["18.x"]
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v2.2.4
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: |
+          echo "pnpm_cache_dir=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v3
+        name: Setup pnpm cache
+        with:
+          path: ${{ steps.pnpm-cache.outputs.pnpm_cache_dir }}
+          key: ${{ runner.os }}-pnpm-store-${{ matrix.dir }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-${{ matrix.dir }}-
+
+      - run: node -v
+      - name: Install deps (with cache)
+        run: pnpm install
+
+      - name: Install playwright ???
+        # Seems like some of playwright's system deps aren't being cached, so we're making sure they are installed
+        run: |
+          cat ./package.json | 
+          if grep --silent '"@playwright/test"';
+            then pnpm playwright install chromium;
+          fi
+
+      - name: Build trpc
+        run: pnpm turbo --filter "@trpc/*" build
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-start }}
+          cache: "pnpm"
+
+      - run: node -v
+
+      # Run test-dev & test-start separately so ports don't clash
+      - name: Run build & test-dev
+        run: pnpm turbo --filter ./examples/${{ matrix.dir }} build type-check
+      - name: Run test-dev
+        run: pnpm turbo --filter ./examples/${{ matrix.dir }} test-dev
+      - name: Run test-start
+        run: pnpm turbo --filter ./examples/${{ matrix.dir }} test-start
